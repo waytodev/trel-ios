@@ -1,5 +1,10 @@
 import Foundation
+// SPM exposes KSCrash's Recording product as `KSCrashRecording`; CocoaPods builds the whole pod as one `KSCrash` module.
+#if canImport(KSCrashRecording)
 import KSCrashRecording
+#elseif canImport(KSCrash)
+import KSCrash
+#endif
 
 /// KSCrash-backed crash capture. Mach exceptions, signals, C++ exceptions, NSExceptions and Swift
 /// runtime traps are written by KSCrash at crash time; on the next launch we convert each report

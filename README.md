@@ -82,11 +82,8 @@ SPM needs `Package.swift` at the repository root, so the SDK is mirrored to
 `github.com/waytodev/trel-ios` with `git subtree`:
 
 ```sh
-# from the monorepo root
-git subtree split --prefix=packages/sdk-ios -b trel-ios-release
-git push git@github.com:waytodev/trel-ios.git trel-ios-release:main
-git tag v0.1.0 trel-ios-release && git push git@github.com:waytodev/trel-ios.git v0.1.0
-git branch -D trel-ios-release
+# from the monorepo root, clean tree: pushes main and tags v<s.version> on the mirror
+pnpm mirror:sdks ios
 
 # CocoaPods (after the tag exists on the mirror)
 pod trunk push packages/sdk-ios/Trel.podspec --allow-warnings

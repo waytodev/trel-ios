@@ -34,6 +34,10 @@ public struct TrelOptions {
     public var debug: Bool = false
     /// Last chance to modify or drop an event. Return `nil` to drop.
     public var beforeSend: ((TrelEvent) -> TrelEvent?)?
+    /// `trel.platform` resource attribute. The React Native SDK sets `react-native`; leave as is otherwise.
+    public var platform: String?
+    /// `telemetry.sdk.name` resource attribute. Wrapping SDKs (React Native) override it.
+    public var sdkName: String?
 
     public init(apiKey: String, environment: String = "production") {
         self.apiKey = apiKey

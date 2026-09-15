@@ -182,6 +182,9 @@ public final class Trel {
     /// Current session id (per process launch).
     public static var sessionId: String? { shared?.session.id }
 
+    /// Release the SDK reports (`version+build` unless overridden).
+    public var resourceRelease: String { resource.release }
+
     // MARK: - HTTP spans for custom clients
 
     /// Starts an HTTP CLIENT span for a request you make outside `URLSession` (or with
@@ -232,6 +235,40 @@ public final class Trel {
                 ok: error == nil && statusCode < 500,
                 attrs: attrs
             ))
+        }
+    }
+
+    // MARK: - Wrapping SDKs (React Native)
+
+    static let jsFatalKey = "to.trel.js_fatal_reported"
+
+    /// Reports an exception described by a wrapping runtime (React Native / Hermes). `stacktrace`
+    /// is in that runtime's native format; ingest parses Hermes, V8, Java and Apple stacks.
+    public func captureRuntimeException(type: String, message: String, stacktrace: String, mechanism: String, attributes: [String: Any]? = nil, fatal: Bool = false) {
+        var attrs = baseAttributes(attributes)
+        attrs[Attr.threadName] = "js"
+        let event = TrelEvent(type: type, message: message, stacktrace: stacktrace, mechanism: mechanism, attributes: attrs)
+        if fatal {
+            // RN re-throws fatal JS errors as RCTFatalException; the crash reporter drops that duplicate next launch.
+            UserDefaults.standard.set(true, forKey: Trel.jsFatalKey)
+            UserDefaults.standard.synchronize()
+            enqueue(event: event, fatal: true, sync: true, at: Date())
+            session.markCrashed()
+            transport.scheduleSoon(0)
+        } else {
+            enqueue(event: event, fatal: false, sync: false, at: Date())
+            session.markErrored(queue: queue)
+        }
+    }
+
+    /// Enqueues pre-built OTLP records (JSON array of log records or spans) from a wrapping runtime.
+    public func enqueueRecords(kind: String, recordsJson: String) {
+        guard let data = recordsJson.data(using: .utf8), let arr = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else {
+            Trel.debugLog("enqueueRecords: bad payload")
+            return
+        }
+        for rec in arr {
+            if kind == "traces" { queue.enqueueSpan(rec) } else { queue.enqueueLog(rec) }
         }
     }
 

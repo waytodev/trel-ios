@@ -51,12 +51,16 @@ final class CrashReporter {
     func drainPendingReports() -> Bool {
         guard installed, let store = KSCrash.shared.reportStore else { return false }
         var sawFatal = false
+        let jsFatalReported = UserDefaults.standard.bool(forKey: Trel.jsFatalKey)
+        UserDefaults.standard.set(false, forKey: Trel.jsFatalKey)
         for id in store.reportIDs {
             let reportId = id.int64Value
             defer { store.deleteReport(with: reportId) }
             guard let report = store.report(for: reportId) else { continue }
             guard let (event, date, fatal) = convert(report.value) else { continue }
             if fatal { sawFatal = true }
+            // A fatal JS error already reported by the React Native SDK re-surfaces as RCTFatalException.
+            if jsFatalReported && (event.type.hasPrefix("RCTFatal") || event.type.hasPrefix("RCTJavaScript")) { continue }
             trel.enqueue(event: event, fatal: fatal, sync: false, at: date)
         }
         return sawFatal

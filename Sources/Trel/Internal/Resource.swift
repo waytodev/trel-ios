@@ -11,9 +11,13 @@ final class Resource {
     let build: String?
     let environment: String
     let installId: String
+    let platform: String
+    let sdkName: String
     private let processStart = Date()
 
     init(options: TrelOptions) {
+        platform = options.platform ?? (Resource.osName == "ios" ? "ios" : Resource.osName)
+        sdkName = options.sdkName ?? Trel.sdkName
         let bundle = Bundle.main
         bundleId = bundle.bundleIdentifier ?? "app"
         let shortVersion = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
@@ -66,9 +70,9 @@ final class Resource {
             Attr.deviceModel: Resource.machine,
             Attr.deviceManufacturer: "Apple",
             Attr.deviceId: installId,
-            Attr.sdkName: Trel.sdkName,
+            Attr.sdkName: sdkName,
             Attr.sdkVersion: Trel.sdkVersion,
-            Attr.platform: Resource.osName == "ios" ? "ios" : Resource.osName,
+            Attr.platform: platform,
             Attr.appPackage: bundleId,
             Attr.appBuild: build ?? "",
         ]

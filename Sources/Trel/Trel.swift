@@ -9,9 +9,27 @@ import Foundation
 /// Everything is written to a disk queue first and shipped in the background, so a crash on the
 /// very first frame still arrives on the next launch. All methods are thread-safe and no-ops before
 /// `start`.
+/// ObjC / Expo AppDelegate entry so a crash before the JS bundle calls `Trel.init` is still kept.
+@objc(TrelBootstrap)
+public final class TrelBootstrap: NSObject {
+    @objc public static func start(apiKey: String) {
+        start(apiKey: apiKey, environment: "production", release: nil)
+    }
+
+    @objc public static func start(apiKey: String, environment: String, release: String?) {
+        var options = TrelOptions(apiKey: apiKey, environment: environment)
+        options.release = release
+        options.platform = "react-native"
+        options.sdkName = "trel-react-native"
+        options.enableNetwork = false
+        options.enableViewControllerBreadcrumbs = false
+        Trel.start(options)
+    }
+}
+
 public final class Trel {
     static let sdkName = "trel-ios"
-    static let sdkVersion = "0.1.0"
+    static let sdkVersion = "0.2.0"
 
     private static let lock = NSLock()
     private static var current: Trel?
@@ -28,6 +46,7 @@ public final class Trel {
     let resource: Resource
     let scope: Scope
     let queue: Queue
+    let attachments: Attachments
     let transport: Transport
     let session: Session
     let lifecycle: Lifecycle
@@ -59,6 +78,7 @@ public final class Trel {
         resource = Resource(options: options)
         scope = Scope(maxBreadcrumbs: options.maxBreadcrumbs)
         queue = Queue(resource: resource)
+        attachments = Attachments()
         session = Session()
         transport = Transport(options: options, queue: queue, resource: resource)
         lifecycle = Lifecycle(trel: nil)
@@ -75,10 +95,18 @@ public final class Trel {
             crashedHint = reporter.drainPendingReports() || reporter.crashedLastLaunch
             reporter.setContext(session.id, forKey: Attr.sessionId)
         }
-        session.reportPreviousRun(queue: queue, crashedHint: crashedHint)
+        let previousSessionId = session.reportPreviousRun(queue: queue, crashedHint: crashedHint)
         session.start(queue: queue)
 
+        #if canImport(UIKit)
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        #endif
+        Oom.notePrevious(trel: self, crashed: crashedHint, previousSessionId: previousSessionId)
         lifecycle.install(viewControllerBreadcrumbs: options.enableViewControllerBreadcrumbs)
+        Frames.shared.start()
+        if options.replaySampleRate > 0, Double.random(in: 0..<1) < options.replaySampleRate {
+            Replay.start(self)
+        }
         if options.enableAppHangs {
             hangWatchdog = AppHangWatchdog(trel: self, timeout: options.appHangTimeout)
             hangWatchdog?.start()
@@ -86,6 +114,16 @@ public final class Trel {
         if options.enableNetwork { NetworkInstrumentation.install(trel: self) }
         transport.start()
         Trel.debugLog("started v\(Trel.sdkVersion) release=\(resource.release) env=\(options.environment)")
+    }
+
+    /// JS `init` after `AppDelegate` already called `start`: capture flags only.
+    public func configureCapture(screenshotOnError: Bool, maskAllText: Bool, replaySampleRate: Double) {
+        options.screenshotOnError = screenshotOnError
+        options.maskAllText = maskAllText
+        options.replaySampleRate = replaySampleRate
+        if replaySampleRate > 0, Double.random(in: 0..<1) < replaySampleRate {
+            Replay.start(self)
+        }
     }
 
     // MARK: - Capture
@@ -174,6 +212,41 @@ public final class Trel {
         crashReporter?.setContext(value, forKey: Attr.tagPrefix + key)
     }
 
+    public func setScreen(_ name: String?) {
+        scope.setScreen(name)
+        setTag("screen", name)
+    }
+
+    public func setContext(name: String, json: String?) {
+        scope.setContext(name, json)
+    }
+
+    public func setRuntime(_ json: String) {
+        guard let data = json.data(using: .utf8), let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        scope.setRuntime(obj)
+    }
+
+    @discardableResult
+    public func captureScreenshot(maskText: Bool, id: String? = nil) -> String? {
+        guard let bytes = Screenshot.capture(maskText: maskText || options.maskAllText) else { return nil }
+        return attachments.enqueue(type: "screenshot", body: bytes, eventId: id, traceId: nil, sessionId: session.id, fatal: true, id: id)
+    }
+
+    @discardableResult
+    public func enqueueAttachment(type: String, body: Data, eventId: String?, traceId: String?, fatal: Bool = false) -> String? {
+        attachments.enqueue(type: type, body: body, eventId: eventId, traceId: traceId, sessionId: session.id, fatal: fatal)
+    }
+
+    @discardableResult
+    public func enqueueFile(type: String, path: String, eventId: String?, traceId: String?) -> String? {
+        guard let body = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return nil }
+        return enqueueAttachment(type: type, body: body, eventId: eventId, traceId: traceId, fatal: false)
+    }
+
+    public func consumeFrameStats() -> (slow: Int, frozen: Int) { Frames.shared.consume() }
+
+    public func setReplayPaused(_ paused: Bool) { Replay.paused = paused }
+
     /// Blocks (up to `timeout`) until the queue has been sent.
     public static func flush(timeout: TimeInterval = 3) { shared?.flush(timeout: timeout) }
 
@@ -184,6 +257,8 @@ public final class Trel {
 
     /// Release the SDK reports (`version+build` unless overridden).
     public var resourceRelease: String { resource.release }
+
+    public var uptimeMs: Int { resource.uptimeMs }
 
     // MARK: - HTTP spans for custom clients
 
@@ -278,6 +353,7 @@ public final class Trel {
         var attrs = extra ?? [:]
         scope.user.apply(to: &attrs)
         for (k, v) in scope.tags { attrs[Attr.tagPrefix + k] = v }
+        scope.apply(to: &attrs)
         attrs[Attr.sessionId] = session.id
         attrs[Attr.appState] = lifecycle.isForeground ? "foreground" : "background"
         attrs[Attr.appUptimeMs] = resource.uptimeMs

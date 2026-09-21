@@ -124,6 +124,7 @@ final class CrashReporter {
         }
         if attrs[Attr.breadcrumbs] == nil { attrs[Attr.breadcrumbs] = "[]" }
         if let name = crashed?["name"] as? String { attrs[Attr.threadName] = name } else if let q = crashed?["dispatch_queue"] as? String { attrs[Attr.threadName] = q }
+        attrs[Attr.threads] = CrashReporter.threadsJson(threads, crashed: crashed)
         if let images = report["binary_images"] as? [[String: Any]] { attrs[Attr.debugMeta] = CrashReporter.debugMeta(images) }
         if let diagnosis = crash["diagnosis"] as? String { attrs["trel.diagnosis"] = diagnosis }
         attrs[Attr.appState] = "foreground"
@@ -153,6 +154,22 @@ final class CrashReporter {
             lines.append("\(i)   \(image.replacingOccurrences(of: " ", with: "_"))   \(addrHex) \(tail)")
         }
         return lines.joined(separator: "\n")
+    }
+
+    static func threadsJson(_ threads: [[String: Any]], crashed: [String: Any]?) -> String {
+        var list: [[String: Any]] = []
+        for thread in threads.prefix(32) {
+            let name = (thread["name"] as? String) ?? (thread["dispatch_queue"] as? String) ?? "thread"
+            let isCrashed = (thread["crashed"] as? Bool) == true || (crashed?["index"] as? Int) == (thread["index"] as? Int)
+            list.append([
+                "name": name,
+                "crashed": isCrashed,
+                "stack": appleStack(thread: thread, header: name),
+            ])
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: list), var s = String(data: data, encoding: .utf8) else { return "[]" }
+        if s.count > 48 * 1024 { s = String(s.prefix(48 * 1024)) }
+        return s
     }
 
     static func debugMeta(_ images: [[String: Any]]) -> String {

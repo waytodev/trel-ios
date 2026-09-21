@@ -28,11 +28,15 @@ final class Lifecycle {
         }
         nc.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: nil) { [weak self] _ in
             self?.isForeground = false
+            Oom.markClean(true)
+            Oom.markForeground(false)
             self?.trel.addBreadcrumb(Breadcrumb(message: "app backgrounded", category: "app.lifecycle"))
             self?.trel.transport.setForeground(false)
         }
         nc.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: nil) { [weak self] _ in
             self?.isForeground = true
+            Oom.markClean(false)
+            Oom.markForeground(true)
             self?.trel.addBreadcrumb(Breadcrumb(message: "app foregrounded", category: "app.lifecycle"))
         }
         nc.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: nil) { [weak self] _ in
@@ -45,6 +49,9 @@ final class Lifecycle {
             isForeground = state != .background
         }
         if viewControllerBreadcrumbs { ViewControllerSwizzle.install(trel: trel) }
+        NetworkPath.start { [weak self] kind in
+            self?.trel.addBreadcrumb(Breadcrumb(message: kind, category: "app.connectivity"))
+        }
         #endif
     }
 }

@@ -20,6 +20,9 @@ final class Scope {
     private let maxBreadcrumbs: Int
     private var crumbs: [Breadcrumb] = []
     private var tagMap: [String: String] = [:]
+    private var contexts: [String: String] = [:]
+    private var runtime: [String: Any] = [:]
+    private var screenName: String?
     private var userValue = User()
 
     init(maxBreadcrumbs: Int) {
@@ -50,6 +53,34 @@ final class Scope {
         } else {
             tagMap.removeValue(forKey: k)
         }
+    }
+
+    func setScreen(_ name: String?) {
+        lock.lock(); defer { lock.unlock() }
+        screenName = name.map { String($0.prefix(120)) }
+    }
+
+    func setContext(_ name: String, _ json: String?) {
+        let key = String(name.trimmingCharacters(in: .whitespaces).prefix(64))
+        guard !key.isEmpty else { return }
+        lock.lock(); defer { lock.unlock() }
+        if let json = json { contexts[key] = String(json.prefix(8000)) } else { contexts.removeValue(forKey: key) }
+    }
+
+    func setRuntime(_ values: [String: Any]) {
+        lock.lock(); defer { lock.unlock() }
+        runtime = values
+    }
+
+    func apply(to attrs: inout [String: Any]) {
+        lock.lock()
+        let screen = screenName
+        let ctx = contexts
+        let run = runtime
+        lock.unlock()
+        if let screen = screen { attrs[Attr.screenName] = screen }
+        for (k, v) in ctx { attrs[Attr.contextPrefix + k] = v }
+        for (k, v) in run { attrs[k] = v }
     }
 
     func add(_ b: Breadcrumb) {

@@ -12,7 +12,8 @@ final class Session {
     private static let keyPrevious = "to.trel.session.previous"
     private static let keyCrashed = "to.trel.session.crashed"
 
-    func reportPreviousRun(queue: Queue, crashedHint: Bool) {
+    @discardableResult
+    func reportPreviousRun(queue: Queue, crashedHint: Bool) -> String? {
         let previousId = defaults.string(forKey: Session.keySession)
         let crashed = defaults.bool(forKey: Session.keyCrashed) || crashedHint || queue.hasCrashEnvelope()
         if let previousId = previousId, crashed {
@@ -20,6 +21,7 @@ final class Session {
         }
         defaults.set(id, forKey: Session.keySession)
         defaults.set(false, forKey: Session.keyCrashed)
+        return previousId
     }
 
     func start(queue: Queue) {

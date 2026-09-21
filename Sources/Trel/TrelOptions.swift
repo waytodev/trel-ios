@@ -32,6 +32,12 @@ public struct TrelOptions {
     public var minLogLevel: TrelLevel = .debug
     /// Print SDK diagnostics to the console.
     public var debug: Bool = false
+    /// Capture a screenshot when reporting an unhandled error.
+    public var screenshotOnError: Bool = true
+    /// Black out text before encoding a screenshot or replay frame.
+    public var maskAllText: Bool = false
+    /// Chance (0...1) of recording screenshot replay for this process. Default off.
+    public var replaySampleRate: Double = 0
     /// Last chance to modify or drop an event. Return `nil` to drop.
     public var beforeSend: ((TrelEvent) -> TrelEvent?)?
     /// `trel.platform` resource attribute. The React Native SDK sets `react-native`; leave as is otherwise.

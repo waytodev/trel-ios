@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'Trel'
-  s.version          = '0.1.0'
+  s.version          = '0.2.0'
   s.summary          = 'Crashes, app hangs, breadcrumbs, sessions, network spans and logs for iOS, sent to Trel over OTLP.'
   s.homepage         = 'https://trel.to'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }

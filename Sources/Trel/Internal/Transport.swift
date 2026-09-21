@@ -112,6 +112,53 @@ final class Transport {
                 return
             }
         }
+        drainAttachments()
+    }
+
+    private func drainAttachments() {
+        guard let attachments = Trel.shared?.attachments else { return }
+        for item in attachments.pending() {
+            if disabled { return }
+            switch postAttachment(item.meta, file: item.file) {
+            case .sent, .drop:
+                if let id = item.meta["id"] as? String { attachments.delete(id: id) }
+            case .retry:
+                return
+            case .disabled:
+                disabled = true
+                return
+            }
+        }
+    }
+
+    private func postAttachment(_ meta: [String: Any], file: URL) -> Outcome {
+        guard let body = try? Data(contentsOf: file), !body.isEmpty else { return .drop }
+        let type = meta["type"] as? String ?? "screenshot"
+        var request = URLRequest(url: options.endpoint.appendingPathComponent("v1/attachments"))
+        request.httpMethod = "POST"
+        request.setValue(type == "profile" ? "application/json" : "image/jpeg", forHTTPHeaderField: "Content-Type")
+        request.setValue(options.apiKey, forHTTPHeaderField: "x-trel-key")
+        request.setValue(type, forHTTPHeaderField: "x-trel-attachment-type")
+        request.setValue(meta["id"] as? String ?? "", forHTTPHeaderField: "x-trel-attachment-id")
+        request.setValue(meta["sessionId"] as? String ?? "", forHTTPHeaderField: "x-trel-session")
+        request.setValue(meta["eventId"] as? String ?? "", forHTTPHeaderField: "x-trel-event")
+        request.setValue(meta["traceId"] as? String ?? "", forHTTPHeaderField: "x-trel-trace")
+        request.setValue(String(meta["ts"] as? Int ?? 0), forHTTPHeaderField: "x-trel-ts")
+        request.httpBody = body
+        let semaphore = DispatchSemaphore(value: 0)
+        var outcome: Outcome = .retry
+        session.dataTask(with: request) { _, response, error in
+            defer { semaphore.signal() }
+            guard error == nil, let http = response as? HTTPURLResponse else { outcome = .retry; return }
+            switch http.statusCode {
+            case 200..<300: outcome = .sent
+            case 402: outcome = .disabled
+            case 429, 500...: outcome = .retry
+            default: outcome = .drop
+            }
+        }.resume()
+        _ = semaphore.wait(timeout: .now() + 20)
+        return outcome
     }
 
     private func post(_ file: URL) -> Outcome {

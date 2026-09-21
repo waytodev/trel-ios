@@ -84,17 +84,36 @@ final class Resource {
         #if canImport(UIKit) && !os(tvOS)
         DispatchQueue.mainIfNeededSync {
             let device = UIDevice.current
-            if device.isBatteryMonitoringEnabled, device.batteryLevel >= 0 {
-                attrs[Attr.batteryLevel] = Int(device.batteryLevel * 100)
-            }
+            device.isBatteryMonitoringEnabled = true
+            if device.batteryLevel >= 0 { attrs[Attr.batteryLevel] = Int(device.batteryLevel * 100) }
+            attrs[Attr.batteryCharging] = device.batteryState == .charging || device.batteryState == .full
             switch device.orientation {
             case .portrait, .portraitUpsideDown: attrs[Attr.orientation] = "portrait"
             case .landscapeLeft, .landscapeRight: attrs[Attr.orientation] = "landscape"
             default: break
             }
+            let bounds = UIScreen.main.bounds
+            let scale = UIScreen.main.scale
+            attrs[Attr.screen] = "\(Int(bounds.width * scale))x\(Int(bounds.height * scale))@\(scale)"
         }
         #endif
         attrs[Attr.freeMemory] = Resource.freeMemoryBytes()
+        attrs[Attr.totalMemory] = ProcessInfo.processInfo.physicalMemory
+        attrs[Attr.locale] = Locale.current.identifier
+        attrs[Attr.timezone] = TimeZone.current.identifier
+        #if arch(arm64)
+        attrs[Attr.arch] = "arm64"
+        #elseif arch(x86_64)
+        attrs[Attr.arch] = "x86_64"
+        #else
+        attrs[Attr.arch] = "unknown"
+        #endif
+        #if targetEnvironment(simulator)
+        attrs[Attr.simulator] = true
+        #else
+        attrs[Attr.simulator] = false
+        #endif
+        attrs[Attr.networkType] = NetworkPath.current
     }
 
     private static func freeMemoryBytes() -> Int {

@@ -9,12 +9,12 @@ final class Frames: NSObject {
     private var slow = 0
     private var frozen = 0
     private var last = CFTimeInterval(0)
-    #if canImport(QuartzCore)
+    #if os(iOS)
     private var link: CADisplayLink?
     #endif
 
     func start() {
-        #if canImport(QuartzCore) && canImport(UIKit)
+        #if os(iOS)
         DispatchQueue.main.async {
             let link = CADisplayLink(target: self, selector: #selector(self.tick(_:)))
             link.add(to: .main, forMode: .common)
@@ -23,7 +23,7 @@ final class Frames: NSObject {
         #endif
     }
 
-    #if canImport(QuartzCore)
+    #if os(iOS)
     @objc private func tick(_ link: CADisplayLink) {
         if last > 0 {
             let dt = (link.timestamp - last) * 1000

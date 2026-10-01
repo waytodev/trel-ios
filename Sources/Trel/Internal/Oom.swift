@@ -28,7 +28,7 @@ enum Oom {
         }
         defaults.set(true, forKey: foregroundKey)
         defaults.set(false, forKey: cleanKey)
-        #if canImport(MetricKit)
+        #if os(iOS)
         if #available(iOS 14.0, *) { MXMetricManager.shared.add(OomSubscriber(trel: trel)) }
         #endif
     }
@@ -42,7 +42,7 @@ enum Oom {
     }
 }
 
-#if canImport(MetricKit)
+#if os(iOS)
 @available(iOS 14.0, *)
 private final class OomSubscriber: NSObject, MXMetricManagerSubscriber {
     let trel: Trel

@@ -42,7 +42,7 @@ public final class Trel {
 
     public static var isStarted: Bool { shared != nil }
 
-    let options: TrelOptions
+    var options: TrelOptions
     let resource: Resource
     let scope: Scope
     let queue: Queue

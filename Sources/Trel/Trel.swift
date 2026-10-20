@@ -29,7 +29,7 @@ public final class TrelBootstrap: NSObject {
 
 public final class Trel {
     static let sdkName = "trel-ios"
-    static let sdkVersion = "0.2.0"
+    static let sdkVersion = "0.2.1"
 
     private static let lock = NSLock()
     private static var current: Trel?

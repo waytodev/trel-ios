@@ -9,7 +9,7 @@ and macOS — sent to [Trel](https://trel.to) over OTLP. Crash capture is built 
 Swift Package Manager:
 
 ```swift
-.package(url: "https://github.com/waytodev/trel-ios.git", from: "0.2.0")
+.package(url: "https://github.com/waytodev/trel-ios.git", from: "0.2.1")
 ```
 
 CocoaPods:

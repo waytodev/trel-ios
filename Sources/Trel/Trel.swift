@@ -99,7 +99,7 @@ public final class Trel {
         session.start(queue: queue)
 
         #if canImport(UIKit)
-        UIDevice.current.isBatteryMonitoringEnabled = true
+        DispatchQueue.main.async { UIDevice.current.isBatteryMonitoringEnabled = true }
         #endif
         Oom.notePrevious(trel: self, crashed: crashedHint, previousSessionId: previousSessionId)
         lifecycle.install(viewControllerBreadcrumbs: options.enableViewControllerBreadcrumbs)

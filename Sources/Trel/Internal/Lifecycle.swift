@@ -45,8 +45,11 @@ final class Lifecycle {
         nc.addObserver(forName: UIApplication.willTerminateNotification, object: nil, queue: nil) { [weak self] _ in
             self?.trel.flush(timeout: 2)
         }
-        if let state = UIApplication.sharedIfAvailable?.applicationState {
-            isForeground = state != .background
+        // `start` can run off the main thread (React Native calls it from the module queue); UIKit state is main-only.
+        DispatchQueue.main.async { [weak self] in
+            if let state = UIApplication.sharedIfAvailable?.applicationState {
+                self?.isForeground = state != .background
+            }
         }
         if viewControllerBreadcrumbs { ViewControllerSwizzle.install(trel: trel) }
         NetworkPath.start { [weak self] kind in

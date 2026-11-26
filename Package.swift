@@ -12,7 +12,8 @@ let package = Package(
         .library(name: "Trel", targets: ["Trel"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/kstenerud/KSCrash.git", from: "2.0.0"),
+        // 2.6.1+: fixes a launch crash on iOS 26.5 (see Trel.podspec).
+        .package(url: "https://github.com/kstenerud/KSCrash.git", from: "2.6.1"),
     ],
     targets: [
         .target(

@@ -6,15 +6,19 @@ import UIKit
 enum Screenshot {
     static func capture(maskText: Bool) -> Data? {
         #if canImport(UIKit) && !os(watchOS)
-        let box = UnsafeMutablePointer<Data?>.allocate(capacity: 1)
-        box.initialize(to: nil)
-        let draw = {
-            box.pointee = Screenshot.draw(maskText: maskText)
+        if Thread.isMainThread { return Screenshot.draw(maskText: maskText) }
+        // Off main (React Native module queue, replay thread): hop to main but never wait forever.
+        // `main.sync` deadlocks the caller if main is itself waiting on that queue, and a busy main
+        // thread would stall the fatal-error path behind the screenshot.
+        final class Box { var data: Data? }
+        let box = Box()
+        let done = DispatchSemaphore(value: 0)
+        DispatchQueue.main.async {
+            box.data = Screenshot.draw(maskText: maskText)
+            done.signal()
         }
-        if Thread.isMainThread { draw() } else { DispatchQueue.main.sync(execute: draw) }
-        let data = box.pointee
-        box.deallocate()
-        return data
+        guard done.wait(timeout: .now() + 0.5) == .success else { return nil }
+        return box.data
         #else
         return nil
         #endif

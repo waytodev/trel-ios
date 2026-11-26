@@ -9,6 +9,7 @@ final class Frames: NSObject {
     private var slow = 0
     private var frozen = 0
     private var last = CFTimeInterval(0)
+    private let lock = NSLock()
     #if os(iOS)
     private var link: CADisplayLink?
     #endif
@@ -16,6 +17,7 @@ final class Frames: NSObject {
     func start() {
         #if os(iOS)
         DispatchQueue.main.async {
+            guard self.link == nil else { return }
             let link = CADisplayLink(target: self, selector: #selector(self.tick(_:)))
             link.add(to: .main, forMode: .common)
             self.link = link
@@ -25,6 +27,7 @@ final class Frames: NSObject {
 
     #if os(iOS)
     @objc private func tick(_ link: CADisplayLink) {
+        lock.lock(); defer { lock.unlock() }
         if last > 0 {
             let dt = (link.timestamp - last) * 1000
             if dt > 700 { frozen += 1 }
@@ -35,6 +38,7 @@ final class Frames: NSObject {
     #endif
 
     func consume() -> (slow: Int, frozen: Int) {
+        lock.lock(); defer { lock.unlock() }
         let out = (slow, frozen)
         slow = 0
         frozen = 0

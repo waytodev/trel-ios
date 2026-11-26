@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Trel for iOS: crashes, app hangs, handled errors, breadcrumbs, sessions, network spans and logs.
 ///
@@ -17,6 +20,8 @@ public final class TrelBootstrap: NSObject {
     }
 
     @objc public static func start(apiKey: String, environment: String, release: String?) {
+        // The Expo plugin bakes the key in at prebuild; an unset env var must not start a keyless SDK.
+        guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         var options = TrelOptions(apiKey: apiKey, environment: environment)
         options.release = release
         options.platform = "react-native"
@@ -29,7 +34,7 @@ public final class TrelBootstrap: NSObject {
 
 public final class Trel {
     static let sdkName = "trel-ios"
-    static let sdkVersion = "0.2.1"
+    static let sdkVersion = "0.2.2"
 
     private static let lock = NSLock()
     private static var current: Trel?
@@ -42,7 +47,13 @@ public final class Trel {
 
     public static var isStarted: Bool { shared != nil }
 
-    var options: TrelOptions
+    private let optionsLock = NSLock()
+    private var _options: TrelOptions
+    /// Read from many threads; JS `init` rewrites the capture flags after an AppDelegate start.
+    var options: TrelOptions {
+        get { optionsLock.lock(); defer { optionsLock.unlock() }; return _options }
+        set { optionsLock.lock(); _options = newValue; optionsLock.unlock() }
+    }
     let resource: Resource
     let scope: Scope
     let queue: Queue
@@ -74,7 +85,7 @@ public final class Trel {
     }
 
     private init(options: TrelOptions) {
-        self.options = options
+        self._options = options
         resource = Resource(options: options)
         scope = Scope(maxBreadcrumbs: options.maxBreadcrumbs)
         queue = Queue(resource: resource)
@@ -118,9 +129,11 @@ public final class Trel {
 
     /// JS `init` after `AppDelegate` already called `start`: capture flags only.
     public func configureCapture(screenshotOnError: Bool, maskAllText: Bool, replaySampleRate: Double) {
-        options.screenshotOnError = screenshotOnError
-        options.maskAllText = maskAllText
-        options.replaySampleRate = replaySampleRate
+        var next = options
+        next.screenshotOnError = screenshotOnError
+        next.maskAllText = maskAllText
+        next.replaySampleRate = replaySampleRate
+        options = next
         if replaySampleRate > 0, Double.random(in: 0..<1) < replaySampleRate {
             Replay.start(self)
         }
@@ -365,7 +378,8 @@ public final class Trel {
     /// Applies `beforeSend` and writes the exception record.
     func enqueue(event: TrelEvent, fatal: Bool, sync: Bool, at date: Date) {
         var finalEvent = event
-        if let hook = options.beforeSend {
+        let opts = options
+        if let hook = opts.beforeSend {
             guard let e = hook(event) else { return }
             finalEvent = e
         }

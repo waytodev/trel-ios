@@ -8,21 +8,31 @@ enum Otlp {
 
     static func anyValue(_ v: Any?) -> [String: Any]? {
         guard let v = v else { return nil }
+        if v is NSNull { return nil }
+        // JSON-decoded numbers are NSNumber, which bridges to Bool for 0/1: decide by the boxed type.
+        if !(v is String), let n = v as? NSNumber {
+            if CFGetTypeID(n) == CFBooleanGetTypeID() { return ["boolValue": n.boolValue] }
+            if CFNumberIsFloatType(n) {
+                let d = n.doubleValue
+                return d.isFinite ? ["doubleValue": d] : ["stringValue": String(d)]
+            }
+            return ["intValue": n.stringValue]
+        }
         switch v {
         case let b as Bool: return ["boolValue": b]
         case let i as Int: return ["intValue": String(i)]
         case let i as Int64: return ["intValue": String(i)]
         case let i as UInt: return ["intValue": String(i)]
-        case let d as Double: return ["doubleValue": d]
-        case let f as Float: return ["doubleValue": Double(f)]
+        case let d as Double: return d.isFinite ? ["doubleValue": d] : ["stringValue": String(d)]
+        case let f as Float: return f.isFinite ? ["doubleValue": Double(f)] : ["stringValue": String(f)]
         case let s as String: return ["stringValue": String(s.prefix(maxString))]
         case let dict as [String: Any]:
-            if let data = try? JSONSerialization.data(withJSONObject: sanitize(dict)), let s = String(data: data, encoding: .utf8) {
+            if let data = jsonData(sanitize(dict)), let s = String(data: data, encoding: .utf8) {
                 return ["stringValue": String(s.prefix(maxString))]
             }
             return nil
         case let arr as [Any]:
-            if let data = try? JSONSerialization.data(withJSONObject: sanitize(arr)), let s = String(data: data, encoding: .utf8) {
+            if let data = jsonData(sanitize(arr)), let s = String(data: data, encoding: .utf8) {
                 return ["stringValue": String(s.prefix(maxString))]
             }
             return nil
@@ -36,6 +46,9 @@ enum Otlp {
         switch value {
         case let dict as [String: Any]: return dict.mapValues { sanitize($0) }
         case let arr as [Any]: return arr.map { sanitize($0) }
+        case let d as Double where !d.isFinite: return String(d)
+        case let f as Float where !f.isFinite: return String(f)
+        case let n as NSNumber where CFNumberIsFloatType(n) && !n.doubleValue.isFinite: return String(n.doubleValue)
         case is String, is Bool, is Int, is Double, is Float, is Int64, is NSNumber, is NSNull: return value
         case let date as Date: return Int(date.timeIntervalSince1970 * 1000)
         case let url as URL: return url.absoluteString
@@ -50,8 +63,19 @@ enum Otlp {
         }
     }
 
-    private static func nanos(_ date: Date) -> String {
-        String(UInt64(date.timeIntervalSince1970 * 1_000_000_000))
+    /// `JSONSerialization.data` raises an Objective-C exception (which `try?` cannot catch) on
+    /// NaN/Infinity or non-JSON types. Validate first so a bad value drops a record, not the app.
+    static func jsonData(_ object: Any) -> Data? {
+        guard JSONSerialization.isValidJSONObject(object) else { return nil }
+        return try? JSONSerialization.data(withJSONObject: object)
+    }
+
+    /// `UInt64(Double)` traps on negative, NaN or out-of-range values (a corrupt or µs-scaled crash
+    /// timestamp would crash every launch). Clamp to now when the date is not plausible.
+    static func nanos(_ date: Date) -> String {
+        var seconds = date.timeIntervalSince1970
+        if !seconds.isFinite || seconds < 0 || seconds > 32_503_680_000 { seconds = Date().timeIntervalSince1970 }
+        return String(UInt64(seconds * 1_000_000_000))
     }
 
     static func logRecord(_ date: Date, level: TrelLevel, body: String, attrs: [String: Any]) -> [String: Any] {
@@ -106,7 +130,7 @@ enum Otlp {
             if let d = b.data { o["data"] = sanitize(d) }
             return o
         }
-        guard let data = try? JSONSerialization.data(withJSONObject: arr), let s = String(data: data, encoding: .utf8) else { return "[]" }
+        guard let data = jsonData(arr), let s = String(data: data, encoding: .utf8) else { return "[]" }
         return s
     }
 

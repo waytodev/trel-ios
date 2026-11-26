@@ -55,7 +55,10 @@ final class Queue {
     }
 
     private func write(kind: String, body: [String: Any]) {
-        guard let data = try? JSONSerialization.data(withJSONObject: body) else { return }
+        guard let data = Otlp.jsonData(body) else {
+            Trel.debugLog("queue write skipped: payload is not valid JSON")
+            return
+        }
         let tmp = dir.appendingPathComponent("\(Ids.ulid()).\(kind).tmp")
         let target = tmp.deletingPathExtension().appendingPathExtension("json")
         do {

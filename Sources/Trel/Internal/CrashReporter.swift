@@ -167,7 +167,7 @@ final class CrashReporter {
                 "stack": appleStack(thread: thread, header: name),
             ])
         }
-        guard let data = try? JSONSerialization.data(withJSONObject: list), var s = String(data: data, encoding: .utf8) else { return "[]" }
+        guard let data = Otlp.jsonData(list), var s = String(data: data, encoding: .utf8) else { return "[]" }
         if s.count > 48 * 1024 { s = String(s.prefix(48 * 1024)) }
         return s
     }
@@ -181,7 +181,7 @@ final class CrashReporter {
             if let size = (img["image_size"] as? NSNumber)?.uint64Value { o["size"] = size }
             return o
         }
-        guard let data = try? JSONSerialization.data(withJSONObject: ["images": list]), let s = String(data: data, encoding: .utf8) else { return "{\"images\":[]}" }
+        guard let data = Otlp.jsonData(["images": list]), let s = String(data: data, encoding: .utf8) else { return "{\"images\":[]}" }
         return s
     }
 
@@ -193,11 +193,21 @@ final class CrashReporter {
 
     static func parseTimestamp(_ raw: Any?) -> Date? {
         if let s = raw as? String {
-            return isoFormatter.date(from: s) ?? ISO8601DateFormatter().date(from: s)
+            if let d = isoFormatter.date(from: s) ?? ISO8601DateFormatter().date(from: s) { return d }
+            // KSCrash writes 6 fractional digits (`…:05.123456Z`); trim to milliseconds and retry.
+            if let dot = s.firstIndex(of: "."), let z = s.lastIndex(of: "Z"), dot < z {
+                let frac = s[s.index(after: dot)..<z].prefix(3)
+                return isoFormatter.date(from: "\(s[..<dot]).\(frac)Z")
+            }
+            return nil
         }
         if let n = raw as? NSNumber {
+            // KSCrash 2.x stores microseconds; older reports used seconds or milliseconds.
             let v = n.doubleValue
-            return Date(timeIntervalSince1970: v > 1e12 ? v / 1000 : v)
+            guard v.isFinite, v > 0 else { return nil }
+            if v > 1e15 { return Date(timeIntervalSince1970: v / 1_000_000) }
+            if v > 1e12 { return Date(timeIntervalSince1970: v / 1000) }
+            return Date(timeIntervalSince1970: v)
         }
         return nil
     }

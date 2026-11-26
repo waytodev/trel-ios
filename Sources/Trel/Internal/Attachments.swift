@@ -22,7 +22,7 @@ final class Attachments {
         if let traceId = traceId { meta["traceId"] = traceId }
         if let sessionId = sessionId { meta["sessionId"] = sessionId }
         lock.lock()
-        if let data = try? JSONSerialization.data(withJSONObject: meta) {
+        if let data = Otlp.jsonData(meta) {
             try? data.write(to: dir.appendingPathComponent("\(id).json"))
             try? Data(bytes).write(to: dir.appendingPathComponent("\(id).bin"))
         }

@@ -85,9 +85,12 @@ SPM needs `Package.swift` at the repository root, so the SDK is mirrored to
 # from the monorepo root, clean tree: pushes main and tags v<s.version> on the mirror
 pnpm mirror:sdks ios
 
-# CocoaPods (after the tag exists on the mirror)
-pod trunk push packages/sdk-ios/Trel.podspec --allow-warnings
 ```
+
+CocoaPods: run the **Publish CocoaPod** workflow on the `trel-ios` mirror (Actions tab, or
+`gh workflow run publish-pod.yml -R waytodev/trel-ios`). It lints and pushes on Xcode 26 because
+`pod trunk push` builds every dependency at its own minimum OS, and KSCrash still declares iOS 12 /
+macOS 10.14, which Xcode 27 refuses. The mirror repo needs a `COCOAPODS_TRUNK_TOKEN` secret.
 
 Bump `sdkVersion` in `Sources/Trel/Trel.swift` and `s.version` in `Trel.podspec` together.
 

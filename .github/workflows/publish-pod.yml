@@ -1,0 +1,39 @@
+# Publishes Trel.podspec to CocoaPods trunk. Lives in the monorepo at packages/sdk-ios and runs in the
+# public waytodev/trel-ios mirror (where this directory is the repo root).
+#
+# Why CI: `pod trunk push` lints every dependency at its own minimum OS. KSCrash still declares
+# iOS 12 / macOS 10.14, which Xcode 27 refuses to build, so the lint has to run on Xcode 26.
+# Apps are unaffected (React Native / Expo raise every pod to the app's deployment target).
+#
+# Manual only, and it creates no tags: run it after `pnpm mirror:sdks ios` has pushed the release
+# whose `v<s.version>` tag the podspec's source points at.
+# Needs the `COCOAPODS_TRUNK_TOKEN` secret (a trunk session token for a Trel pod owner).
+name: Publish CocoaPod
+
+on:
+  workflow_dispatch:
+
+jobs:
+  trunk-push:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          if [ -z "$XCODE" ]; then echo "No Xcode 26 on this runner image" >&2; exit 1; fi
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - name: Check the release tag exists
+        run: |
+          VERSION=$(ruby -e "puts File.read('Trel.podspec')[/s\.version\s*=\s*'([^']+)'/, 1]")
+          git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null \
+            || { echo "Tag v$VERSION is not on the mirror yet; run pnpm mirror:sdks ios first" >&2; exit 1; }
+
+      - name: pod trunk push
+        env:
+          COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
+        run: pod trunk push Trel.podspec --allow-warnings --skip-tests --synchronous

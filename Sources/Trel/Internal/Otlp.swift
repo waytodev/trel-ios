@@ -79,13 +79,37 @@ enum Otlp {
     }
 
     static func logRecord(_ date: Date, level: TrelLevel, body: String, attrs: [String: Any]) -> [String: Any] {
-        [
+        var attrs = attrs
+        let link = takeTraceLink(&attrs)
+        var record: [String: Any] = [
             "timeUnixNano": nanos(date),
             "severityNumber": level.rawValue,
             "severityText": level.label,
             "body": ["stringValue": String(body.prefix(maxString))],
             "attributes": attributes(attrs),
         ]
+        if let link = link {
+            record["traceId"] = link.traceId
+            record["spanId"] = link.spanId
+        }
+        return record
+    }
+
+    /// The React Native SDK passes the active trace as `trel.trace_id` / `trel.span_id` and mirrors
+    /// it into tags (`trel.tag.trace_id`), which KSCrash keeps in the crash context. Lift whichever
+    /// is present to the OTLP top-level fields so the event links to its trace, and drop the copies.
+    static func takeTraceLink(_ attrs: inout [String: Any]) -> (traceId: String, spanId: String)? {
+        let keys = (trace: ["trel.trace_id", Attr.tagPrefix + "trace_id"], span: ["trel.span_id", Attr.tagPrefix + "span_id"])
+        let snapshot = attrs
+        let traceId = keys.trace.compactMap { snapshot[$0] as? String }.first
+        let spanId = keys.span.compactMap { snapshot[$0] as? String }.first
+        (keys.trace + keys.span).forEach { attrs.removeValue(forKey: $0) }
+        guard let t = traceId, let s = spanId, isHex(t, 32), isHex(s, 16) else { return nil }
+        return (t, s)
+    }
+
+    private static func isHex(_ s: String, _ count: Int) -> Bool {
+        s.count == count && s.allSatisfy { $0.isHexDigit } && s.contains { $0 != "0" }
     }
 
     static func exceptionRecord(_ date: Date, event: TrelEvent, fatal: Bool) -> [String: Any] {
